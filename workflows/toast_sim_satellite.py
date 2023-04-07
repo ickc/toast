@@ -150,6 +150,7 @@ def simulate_data(job, toast_comm, telescope, schedule):
     # Timer for reporting the progress
     timer = toast.timing.Timer()
     timer.start()
+    log.info_rank("Simulating data", comm=world_comm)
 
     # Simulate the telescope pointing
 
@@ -158,10 +159,16 @@ def simulate_data(job, toast_comm, telescope, schedule):
     ops.sim_satellite.apply(data)
     log.info_rank("Simulated telescope pointing in", comm=world_comm, timer=timer)
 
+    mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+    log.info_rank(f"After simulating boresight:  {mem}", world_comm)
+
     # Construct a "perfect" noise model just from the focalplane parameters
 
     ops.default_model.apply(data)
     log.info_rank("Created default noise model in", comm=world_comm, timer=timer)
+
+    mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+    log.info_rank(f"After noise model:  {mem}", world_comm)
 
     # Set up detector pointing
 
@@ -200,6 +207,9 @@ def simulate_data(job, toast_comm, telescope, schedule):
     ops.scan_map.apply(data)
     log.info_rank("Simulated sky signal in", comm=world_comm, timer=timer)
 
+    mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+    log.info_rank(f"After simulating sky signal:  {mem}", world_comm)
+
     # Apply a time constant
 
     ops.convolve_time_constant.apply(data)
@@ -210,6 +220,9 @@ def simulate_data(job, toast_comm, telescope, schedule):
     ops.sim_noise.noise_model = ops.default_model.noise_model
     ops.sim_noise.apply(data)
     log.info_rank("Simulated detector noise in", comm=world_comm, timer=timer)
+
+    mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+    log.info_rank(f"After simulating noise:  {mem}", world_comm)
 
     # Optionally write out the data
     if ops.save_hdf5.volume is None:
@@ -251,6 +264,9 @@ def reduce_data(job, args, data):
     ops.mapmaker.apply(data)
     log.info_rank("Finished map-making in", comm=world_comm, timer=timer)
 
+    mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+    log.info_rank(f"After mapmaker:  {mem}", world_comm)
+
     # Optionally run Madam
 
     if toast.ops.madam.available():
@@ -259,6 +275,9 @@ def reduce_data(job, args, data):
         ops.madam.stokes_weights = ops.weights
         ops.madam.apply(data)
         log.info_rank("Finished Madam in", comm=world_comm, timer=timer)
+
+        mem = toast.utils.memreport(msg="(whole node)", comm=world_comm, silent=True)
+        log.info_rank(f"After madam:  {mem}", world_comm)
 
     return
 
@@ -272,6 +291,19 @@ def main():
 
     # Get optional MPI parameters
     comm, procs, rank = toast.get_world()
+
+    if "OMP_NUM_THREADS" in os.environ:
+        nthread = os.environ["OMP_NUM_THREADS"]
+    else:
+        nthread = "unknown number of"
+    log.info_rank(
+        f"Executing workflow with {procs} MPI tasks, each with "
+        f"{nthread} OpenMP threads at {datetime.datetime.now()}",
+        comm,
+    )
+
+    mem = toast.utils.memreport(msg="(whole node)", comm=comm, silent=True)
+    log.info_rank(f"Start of the workflow:  {mem}", comm)
 
     # The operators we want to configure from the command line or a parameter file.
     # We will use other operators, but these are the ones that the user can configure.
