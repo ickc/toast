@@ -26,6 +26,7 @@ an interactive python session.
 """
 
 import argparse
+import datetime
 import os
 import sys
 import traceback
